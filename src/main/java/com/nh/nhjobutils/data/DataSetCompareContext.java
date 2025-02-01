@@ -1,47 +1,50 @@
 package com.nh.nhjobutils.data;
 
+import jakarta.annotation.Nullable;
 import lombok.Builder;
 import lombok.NonNull;
+import org.springframework.batch.item.ItemReader;
 
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.Map;
 
 @Builder
 public class DataSetCompareContext {
     @NonNull private Collection<String> keyNames;
     @NonNull private Collection<String> attributes;
-    @NonNull private Iterator<Map<String, Object>> sourceIterator;
-    @NonNull private Iterator<Map<String, Object>> targetIterator;
+    @NonNull private ItemReader<Map<String, Object>> sourceReader;
+    @NonNull private ItemReader<Map<String, Object>> targetReader;
     @NonNull private DataCompareConsumer consumer;
 
-    public void compare() {
+    public void compare() throws Exception {
         int result;
-        Map<String, Object> sourceRecord=null;
-        Map<String, Object> targetRecord=null;
-        if (sourceIterator.hasNext()) sourceRecord = sourceIterator.next();
-        if (targetIterator.hasNext()) targetRecord = targetIterator.next();
+        @Nullable
+        Map<String, Object> sourceRecord=sourceReader.read();
+        @Nullable
+        Map<String, Object> targetRecord=targetReader.read();
         // 두 커서를 순차적으로 비교
-        while (sourceRecord != null || targetRecord != null) {
+        while (true) {
             if (sourceRecord != null && targetRecord != null) {
                 result = BatchUtils.compare(keyNames, sourceRecord, targetRecord);
                 if (0==result) {
                     consumer.intersection(sourceRecord, targetRecord);
-                    sourceRecord = sourceIterator.hasNext() ? sourceIterator.next() : null;
-                    targetRecord = targetIterator.hasNext() ? targetIterator.next() : null;
+                    sourceRecord = sourceReader.read();
+                    targetRecord = targetReader.read();
                 } else if (result < 0) {
                     consumer.sourceDifference(sourceRecord);
-                    sourceRecord = sourceIterator.hasNext() ? sourceIterator.next() : null;
+                    sourceRecord = sourceReader.read();
                 } else {
                     consumer.targetDifference(targetRecord);
-                    targetRecord = targetIterator.hasNext() ? targetIterator.next() : null;
+                    targetRecord = targetReader.read();
                 }
             } else if (sourceRecord != null) {
                 consumer.sourceDifference(sourceRecord);
-                sourceRecord = sourceIterator.hasNext() ? sourceIterator.next() : null;
-            } else {
+                sourceRecord = sourceReader.read();
+            } else if (targetRecord != null) {
                 consumer.targetDifference(targetRecord);
-                targetRecord = targetIterator.hasNext() ? targetIterator.next() : null;
+                targetRecord = targetReader.read();
+            } else {
+                break;
             }
         }
     }
